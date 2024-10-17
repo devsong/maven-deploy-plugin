@@ -3,7 +3,7 @@
   ------
   Allan Ramirez
   ------
-  July 2006
+  2006-07-14
   ------
 
 ~~ Licensed to the Apache Software Foundation (ASF) under one
@@ -33,5 +33,7 @@ Project Deployment
   * {{{./examples/deploy-ftp.html}Deployment with FTP}}
 
   * {{{./examples/deploy-ssh-external.html}Deployment with external SSH}}
+
+  * {{{./examples/deploy-network-issues.html}Workarounds when there are network issues}}
 
   []

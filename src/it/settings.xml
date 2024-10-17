@@ -32,9 +32,11 @@ under the License.
           <url>@localRepositoryUrl@</url>
           <releases>
             <enabled>true</enabled>
+            <checksumPolicy>ignore</checksumPolicy>
           </releases>
           <snapshots>
             <enabled>true</enabled>
+            <checksumPolicy>ignore</checksumPolicy>
           </snapshots>
         </repository>
       </repositories>
@@ -44,10 +46,22 @@ under the License.
           <url>@localRepositoryUrl@</url>
           <releases>
             <enabled>true</enabled>
+            <checksumPolicy>ignore</checksumPolicy>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+            <checksumPolicy>ignore</checksumPolicy>
+          </snapshots>
+        </pluginRepository>
+        <pluginRepository>
+          <releases>
+            <enabled>false</enabled>
           </releases>
           <snapshots>
             <enabled>true</enabled>
           </snapshots>
+          <id>apache.snapshots</id>
+          <url>https://repository.apache.org/snapshots/</url>
         </pluginRepository>
       </pluginRepositories>
     </profile>

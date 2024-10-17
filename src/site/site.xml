@@ -23,24 +23,23 @@ under the License.
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/DECORATION/1.0.0 http://maven.apache.org/xsd/decoration-1.0.0.xsd">
   <bannerLeft>
-    <src>http://maven.apache.org/images/apache-maven-project.png</src>
-    <href>http://www.apache.org/</href>
+    <src>https://maven.apache.org/images/apache-maven-project.png</src>
+    <href>https://www.apache.org/</href>
   </bannerLeft>
 
   <bannerRight>
-    <src>http://maven.apache.org/images/maven-logo-black-on-white.png</src>
-    <href>http://maven.apache.org/</href>
+    <src>https://maven.apache.org/images/maven-logo-black-on-white.png</src>
+    <href>https://maven.apache.org/</href>
   </bannerRight>
   <skin>
     <groupId>org.apache.maven.skins</groupId>
     <artifactId>maven-fluido-skin</artifactId>
-    <version>1.7</version>
+    <version>1.10.0</version>
   </skin>
 
   <custom>
     <fluidoSkin>
       <sourceLineNumbersEnabled>true</sourceLineNumbersEnabled>
-      <googlePlusOne />
       <googleSearch>
         <sitesearch>maven.apache.org/plugins/maven-deploy-plugin/</sitesearch>
       </googleSearch>
@@ -52,20 +51,20 @@ under the License.
       <item name="Goals" href="plugin-info.html"/>
       <item name="Usage" href="usage.html"/>
       <item name="FAQ" href="faq.html"/>
-      <item name="Release Notes" href="jira-report.html"/>
       <!-- According to https://issues.apache.org/jira/browse/MNGSITE-152 -->
-      <item name="License" href="http://www.apache.org/licenses/"/>
+      <item name="License" href="https://www.apache.org/licenses/"/>
       <item name="Download" href="download.html"/>
     </menu>
     <menu name="Examples">
       <item name="Project Deployment" collapse="true" href="project-deployment.html">
         <item name="Deployment with FTP" href="examples/deploy-ftp.html" />
-        <item name="Deployment with external SSH " href="examples/deploy-ssh-external.html"/>
+        <item name="Deployment with external SSH" href="examples/deploy-ssh-external.html"/>
+        <item name="Deploying With Network Issues" href="examples/deploy-network-issues.html"/>
       </item>
 
       <item name="File Deployment" collapse="true" href="file-deployment.html">
         <item name="Disable the generation of pom" href="examples/disabling-generic-pom.html"/>
-        <item name="Deploy an artifact with a customed pom" href="examples/deploying-with-customed-pom.html"/>
+        <item name="Deploy an artifact with a customized pom" href="examples/deploying-with-customized-pom.html"/>
         <item name="Deploy an artifact with classifier" href="examples/deploying-with-classifiers.html"/>
         <item name="Deploy an artifact with sources and javadoc" href="examples/deploying-sources-javadoc.html"/>
         <item name="Deploy an artifact in legacy layout" href="examples/deploying-in-legacy-layout.html"/>

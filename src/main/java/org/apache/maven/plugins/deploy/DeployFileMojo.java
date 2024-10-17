@@ -1,5 +1,3 @@
-package org.apache.maven.plugins.deploy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -9,7 +7,7 @@ package org.apache.maven.plugins.deploy;
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -18,94 +16,64 @@ package org.apache.maven.plugins.deploy;
  * specific language governing permissions and limitations
  * under the License.
  */
+package org.apache.maven.plugins.deploy;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.Reader;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 
-import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.model.Model;
-import org.apache.maven.model.Parent;
-import org.apache.maven.model.building.ModelBuildingException;
-import org.apache.maven.model.building.ModelSource;
-import org.apache.maven.model.building.StringModelSource;
-import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
-import org.apache.maven.model.io.xpp3.MavenXpp3Writer;
-import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugins.annotations.Component;
-import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.project.DefaultProjectBuildingRequest;
-import org.apache.maven.project.MavenProject;
-import org.apache.maven.project.MavenProjectHelper;
-import org.apache.maven.project.ProjectBuilder;
-import org.apache.maven.project.ProjectBuildingException;
-import org.apache.maven.project.artifact.ProjectArtifactMetadata;
-import org.apache.maven.shared.artifact.DefaultArtifactCoordinate;
-import org.apache.maven.shared.artifact.deploy.ArtifactDeployer;
-import org.apache.maven.shared.artifact.deploy.ArtifactDeployerException;
-import org.apache.maven.shared.repository.RepositoryManager;
-import org.apache.maven.shared.utils.Os;
-import org.codehaus.plexus.util.FileUtils;
-import org.codehaus.plexus.util.IOUtil;
-import org.codehaus.plexus.util.ReaderFactory;
-import org.codehaus.plexus.util.StringUtils;
-import org.codehaus.plexus.util.WriterFactory;
-import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
+import org.apache.maven.api.Artifact;
+import org.apache.maven.api.RemoteRepository;
+import org.apache.maven.api.model.Model;
+import org.apache.maven.api.model.Parent;
+import org.apache.maven.api.plugin.MojoException;
+import org.apache.maven.api.plugin.annotations.Mojo;
+import org.apache.maven.api.plugin.annotations.Parameter;
+import org.apache.maven.api.services.ArtifactDeployer;
+import org.apache.maven.api.services.ArtifactDeployerException;
+import org.apache.maven.api.services.ArtifactDeployerRequest;
+import org.apache.maven.api.services.ArtifactManager;
+import org.apache.maven.api.services.xml.ModelXmlFactory;
+import org.apache.maven.api.services.xml.XmlReaderException;
 
 /**
  * Installs the artifact in the remote repository.
- * 
+ *
  * @author <a href="mailto:aramirez@apache.org">Allan Ramirez</a>
  */
-@Mojo( name = "deploy-file", requiresProject = false, threadSafe = true )
-public class DeployFileMojo
-    extends AbstractDeployMojo
-{
-    @Component
-    private ArtifactDeployer artifactDeployer;
-
-    /**
-     * Used for attaching the artifacts to deploy to the project.
-     */
-    @Component
-    private MavenProjectHelper projectHelper;
-
-    /**
-     * Used for creating the project to which the artifacts to deploy will be attached.
-     */
-    @Component
-    private ProjectBuilder projectBuilder;
+@Mojo(name = "deploy-file", projectRequired = false)
+@SuppressWarnings("unused")
+public class DeployFileMojo extends AbstractDeployMojo {
+    private static final String TAR = "tar.";
+    private static final String ILLEGAL_VERSION_CHARS = "\\/:\"<>|?*[](){},";
 
     /**
      * GroupId of the artifact to be deployed. Retrieved from POM file if specified.
      */
-    @Parameter( property = "groupId" )
+    @Parameter(property = "groupId")
     private String groupId;
 
     /**
      * ArtifactId of the artifact to be deployed. Retrieved from POM file if specified.
      */
-    @Parameter( property = "artifactId" )
+    @Parameter(property = "artifactId")
     private String artifactId;
 
     /**
      * Version of the artifact to be deployed. Retrieved from POM file if specified.
      */
-    @Parameter( property = "version" )
+    @Parameter(property = "version")
     private String version;
 
     /**
@@ -114,630 +82,531 @@ public class DeployFileMojo
      * Maven uses two terms to refer to this datum: the &lt;packaging&gt; element for the entire POM, and the
      * &lt;type&gt; element in a dependency specification.
      */
-    @Parameter( property = "packaging" )
+    @Parameter(property = "packaging")
     private String packaging;
 
     /**
      * Description passed to a generated POM file (in case of generatePom=true)
      */
-    @Parameter( property = "generatePom.description" )
+    @Parameter(property = "generatePom.description")
     private String description;
 
     /**
      * File to be deployed.
      */
-    @Parameter( property = "file", required = true )
-    private File file;
+    @Parameter(property = "file", required = true)
+    Path file;
 
     /**
      * The bundled API docs for the artifact.
-     * 
+     *
      * @since 2.6
      */
-    @Parameter( property = "javadoc" )
-    private File javadoc;
+    @Parameter(property = "javadoc")
+    private Path javadoc;
 
     /**
      * The bundled sources for the artifact.
-     * 
+     *
      * @since 2.6
      */
-    @Parameter( property = "sources" )
-    private File sources;
+    @Parameter(property = "sources")
+    private Path sources;
 
     /**
      * Server Id to map on the &lt;id&gt; under &lt;server&gt; section of settings.xml In most cases, this parameter
      * will be required for authentication.
      */
-    @Parameter( property = "repositoryId", defaultValue = "remote-repository", required = true )
+    @Parameter(property = "repositoryId", defaultValue = "remote-repository", required = true)
     private String repositoryId;
 
     /**
      * URL where the artifact will be deployed. <br/>
      * ie ( file:///C:/m2-repo or scp://host.com/path/to/repo )
      */
-    @Parameter( property = "url", required = true )
+    @Parameter(property = "url", required = true)
     private String url;
 
     /**
      * Location of an existing POM file to be deployed alongside the main artifact, given by the ${file} parameter.
      */
-    @Parameter( property = "pomFile" )
-    private File pomFile;
+    @Parameter(property = "pomFile")
+    private Path pomFile;
 
     /**
      * Upload a POM for this artifact. Will generate a default POM if none is supplied with the pomFile argument.
      */
-    @Parameter( property = "generatePom", defaultValue = "true" )
+    @Parameter(property = "generatePom", defaultValue = "true")
     private boolean generatePom;
 
     /**
      * Add classifier to the artifact
      */
-    @Parameter( property = "classifier" )
+    @Parameter(property = "classifier")
     private String classifier;
-
-    /**
-     * Whether to deploy snapshots with a unique version or not.
-     * 
-     * @deprecated As of Maven 3, this isn't supported anymore and this parameter is only present to break the build if
-     *             you use it!
-     */
-    @Parameter( property = "uniqueVersion" )
-    @Deprecated
-    private Boolean uniqueVersion;
 
     /**
      * A comma separated list of types for each of the extra side artifacts to deploy. If there is a mis-match in the
      * number of entries in {@link #files} or {@link #classifiers}, then an error will be raised.
      */
-    @Parameter( property = "types" )
+    @Parameter(property = "types")
     private String types;
 
     /**
      * A comma separated list of classifiers for each of the extra side artifacts to deploy. If there is a mis-match in
      * the number of entries in {@link #files} or {@link #types}, then an error will be raised.
      */
-    @Parameter( property = "classifiers" )
+    @Parameter(property = "classifiers")
     private String classifiers;
 
     /**
      * A comma separated list of files for each of the extra side artifacts to deploy. If there is a mis-match in the
      * number of entries in {@link #types} or {@link #classifiers}, then an error will be raised.
      */
-    @Parameter( property = "files" )
+    @Parameter(property = "files")
     private String files;
 
-    @Component
-    private RepositoryManager repoManager;
+    /**
+     * Set this to 'true' to bypass artifact deploy
+     * It's not a real boolean as it can have more than 2 values:
+     * <ul>
+     *     <li><code>true</code>: will skip as usual</li>
+     *     <li><code>releases</code>: will skip if current version of the project is a release</li>
+     *     <li><code>snapshots</code>: will skip if current version of the project is a snapshot</li>
+     *     <li>any other values will be considered as <code>false</code></li>
+     * </ul>
+     * @since 3.1.0
+     */
+    @Parameter(property = "maven.deploy.file.skip", defaultValue = "false")
+    private String skip = Boolean.FALSE.toString();
 
-    void initProperties()
-        throws MojoExecutionException
-    {
-        if ( pomFile != null )
-        {
-            processModel( readModel( pomFile ) );
-        }
-        else
-        {
-            boolean foundPom = false;
-
-            JarFile jarFile = null;
-            try
-            {
-                Pattern pomEntry = Pattern.compile( "META-INF/maven/.*/pom\\.xml" );
-
-                jarFile = new JarFile( file );
-
-                Enumeration<JarEntry> jarEntries = jarFile.entries();
-
-                while ( jarEntries.hasMoreElements() )
-                {
-                    JarEntry entry = jarEntries.nextElement();
-
-                    if ( pomEntry.matcher( entry.getName() ).matches() )
-                    {
-                        getLog().debug( "Using " + entry.getName() + " as pomFile" );
-
-                        foundPom = true;
-
-                        InputStream pomInputStream = null;
-                        OutputStream pomOutputStream = null;
-
-                        try
-                        {
-                            pomInputStream = jarFile.getInputStream( entry );
-
-                            String base = file.getName();
-                            if ( base.indexOf( '.' ) > 0 )
-                            {
-                                base = base.substring( 0, base.lastIndexOf( '.' ) );
-                            }
-                            pomFile = new File( file.getParentFile(), base + ".pom" );
-
-                            pomOutputStream = new FileOutputStream( pomFile );
-
-                            IOUtil.copy( pomInputStream, pomOutputStream );
-
-                            pomOutputStream.close();
-                            pomOutputStream = null;
-                            pomInputStream.close();
-                            pomInputStream = null;
-
-                            processModel( readModel( pomFile ) );
-
-                            break;
-                        }
-                        finally
-                        {
-                            IOUtil.close( pomInputStream );
-                            IOUtil.close( pomOutputStream );
-                        }
-                    }
-                }
-
-                if ( !foundPom )
-                {
-                    getLog().info( "pom.xml not found in " + file.getName() );
-                }
-            }
-            catch ( IOException e )
-            {
-                // ignore, artifact not packaged by Maven
-            }
-            finally
-            {
-                if ( jarFile != null )
-                {
-                    try
-                    {
-                        jarFile.close();
-                    }
-                    catch ( IOException e )
-                    {
-                        // we did our best
-                    }
-                }
+    void initProperties() throws MojoException {
+        Path deployedPom;
+        if (pomFile != null) {
+            deployedPom = pomFile;
+            processModel(readModel(deployedPom));
+        } else {
+            deployedPom = readingPomFromJarFile();
+            if (deployedPom != null) {
+                pomFile = deployedPom;
             }
         }
 
-        if ( packaging == null && file != null )
-        {
-            packaging = FileUtils.getExtension( file.getName() );
+        if (packaging == null && file != null) {
+            packaging = getExtension(file);
         }
     }
 
-    public void execute()
-        throws MojoExecutionException, MojoFailureException
-    {
-        if ( uniqueVersion != null )
-        {
-            throw new MojoExecutionException( "You are using 'uniqueVersion' which has been removed"
-                + " from the maven-deploy-plugin. "
-                + "Please see the >>Major Version Upgrade to version 3.0.0<< on the plugin site." );
+    private Path readingPomFromJarFile() {
+        Pattern pomEntry = Pattern.compile("META-INF/maven/.*/pom\\.xml");
+        try {
+            try (JarFile jarFile = new JarFile(file.toFile())) {
+                JarEntry entry = jarFile.stream()
+                        .filter(e -> pomEntry.matcher(e.getName()).matches())
+                        .findFirst()
+                        .orElse(null);
+                if (entry != null) {
+                    getLog().debug("Using " + entry.getName() + " as pomFile");
+
+                    try (InputStream pomInputStream = jarFile.getInputStream(entry)) {
+                        String base = file.getFileName().toString();
+                        if (base.indexOf('.') > 0) {
+                            base = base.substring(0, base.lastIndexOf('.'));
+                        }
+                        Path pomFile = File.createTempFile(base, ".pom").toPath();
+
+                        Files.copy(pomInputStream, pomFile, StandardCopyOption.REPLACE_EXISTING);
+
+                        processModel(readModel(pomFile));
+
+                        return pomFile;
+                    }
+                } else {
+                    getLog().info("pom.xml not found in " + file.getFileName());
+                }
+            }
+        } catch (IOException e) {
+            // ignore, artifact not packaged by Maven
+        }
+        return null;
+    }
+
+    public void execute() throws MojoException {
+        if (Boolean.parseBoolean(skip)
+                || ("releases".equals(skip) && !session.isVersionSnapshot(version))
+                || ("snapshots".equals(skip) && session.isVersionSnapshot(version))) {
+            getLog().info("Skipping artifact deployment");
+            return;
         }
 
-        failIfOffline();
-
-        if ( !file.exists() )
-        {
-            throw new MojoExecutionException( file.getPath() + " not found." );
+        if (!Files.exists(file)) {
+            String message = "The specified file '" + file + "' does not exist";
+            getLog().error(message);
+            throw new MojoException(message);
         }
 
         initProperties();
 
-        ArtifactRepository deploymentRepository = createDeploymentArtifactRepository( repositoryId, url );
+        RemoteRepository deploymentRepository =
+                createDeploymentArtifactRepository(repositoryId, url.replace(File.separator, "/"));
 
-        String protocol = deploymentRepository.getProtocol();
-
-        if ( StringUtils.isEmpty( protocol ) )
-        {
-            throw new MojoExecutionException( "No transfer protocol found." );
+        if (deploymentRepository.getProtocol().isEmpty()) {
+            throw new MojoException("No transfer protocol found.");
         }
 
-        MavenProject project = createMavenProject();
-        Artifact artifact = project.getArtifact();
-
-        if ( file.equals( getLocalRepoFile() ) )
-        {
-            throw new MojoFailureException( "Cannot deploy artifact from the local repository: " + file );
+        Path deployedPom;
+        if (pomFile != null) {
+            deployedPom = pomFile;
+            processModel(readModel(deployedPom));
+        } else {
+            deployedPom = readingPomFromJarFile();
         }
 
-        List<Artifact> deployableArtifacts = new ArrayList<Artifact>();
-
-        if ( classifier == null )
-        {
-            artifact.setFile( file );
-            deployableArtifacts.add( artifact );
-        }
-        else
-        {
-            projectHelper.attachArtifact( project, packaging, classifier, file );
+        if (groupId == null || artifactId == null || version == null || packaging == null) {
+            throw new MojoException("The artifact information is incomplete: 'groupId', 'artifactId', "
+                    + "'version' and 'packaging' are required.");
         }
 
-        // Upload the POM if requested, generating one if need be
-        if ( !"pom".equals( packaging ) )
-        {
-            File pom = pomFile;
-            if ( pom == null && generatePom )
-            {
-                pom = generatePomFile();
-            }
-            if ( pom != null )
-            {
-                if ( classifier == null )
-                {
-                    ProjectArtifactMetadata metadata = new ProjectArtifactMetadata( artifact, pom );
-                    artifact.addMetadata( metadata );
+        if (!isValidId(groupId) || !isValidId(artifactId) || !isValidVersion(version)) {
+            throw new MojoException("The artifact information is not valid: uses invalid characters.");
+        }
+
+        failIfOffline();
+        warnIfAffectedPackagingAndMaven(packaging);
+
+        List<Artifact> deployables = new ArrayList<>();
+
+        boolean isFilePom = classifier == null && "pom".equals(packaging);
+        Artifact artifact = session.createArtifact(
+                groupId, artifactId, version, classifier, isFilePom ? "pom" : getExtension(file), packaging);
+
+        if (file.equals(getLocalRepositoryFile(artifact))) {
+            throw new MojoException("Cannot deploy artifact from the local repository: " + file);
+        }
+
+        ArtifactManager artifactManager = session.getService(ArtifactManager.class);
+        artifactManager.setPath(artifact, file);
+        deployables.add(artifact);
+
+        if (!isFilePom) {
+            Artifact pomArtifact = session.createArtifact(groupId, artifactId, version, "", "pom", null);
+            if (deployedPom != null) {
+                artifactManager.setPath(pomArtifact, deployedPom);
+                deployables.add(pomArtifact);
+            } else {
+                deployedPom = generatePomFile();
+                artifactManager.setPath(pomArtifact, deployedPom);
+                if (generatePom) {
+                    getLog().debug("Deploying generated POM");
+                    deployables.add(pomArtifact);
+                } else {
+                    getLog().debug("Skipping deploying POM");
                 }
-                else
-                {
-                    artifact.setFile( pom );
-                    deployableArtifacts.add( artifact );
-                }
             }
         }
 
-        if ( updateReleaseInfo )
-        {
-            artifact.setRelease( true );
-        }
-        artifact.setRepository( deploymentRepository );
-
-        if ( sources != null )
-        {
-            projectHelper.attachArtifact( project, "jar", "sources", sources );
+        if (sources != null) {
+            Artifact sourcesArtifact = session.createArtifact(groupId, artifactId, version, "sources", "jar", null);
+            artifactManager.setPath(sourcesArtifact, sources);
+            deployables.add(sourcesArtifact);
         }
 
-        if ( javadoc != null )
-        {
-            projectHelper.attachArtifact( project, "jar", "javadoc", javadoc );
+        if (javadoc != null) {
+            Artifact javadocArtifact = session.createArtifact(groupId, artifactId, version, "javadoc", "jar", null);
+            artifactManager.setPath(javadocArtifact, javadoc);
+            deployables.add(javadocArtifact);
         }
 
-        if ( files != null )
-        {
-            if ( types == null )
-            {
-                throw new MojoExecutionException( "You must specify 'types' if you specify 'files'" );
+        if (files != null) {
+            if (types == null) {
+                throw new MojoException("You must specify 'types' if you specify 'files'");
             }
-            if ( classifiers == null )
-            {
-                throw new MojoExecutionException( "You must specify 'classifiers' if you specify 'files'" );
+            if (classifiers == null) {
+                throw new MojoException("You must specify 'classifiers' if you specify 'files'");
             }
-            int filesLength = StringUtils.countMatches( files, "," );
-            int typesLength = StringUtils.countMatches( types, "," );
-            int classifiersLength = StringUtils.countMatches( classifiers, "," );
-            if ( typesLength != filesLength )
-            {
-                throw new MojoExecutionException( "You must specify the same number of entries in 'files' and "
-                    + "'types' (respectively " + filesLength + " and " + typesLength + " entries )" );
+            int filesLength = countCommas(files);
+            int typesLength = countCommas(types);
+            int classifiersLength = countCommas(classifiers);
+            if (typesLength != filesLength) {
+                throw new MojoException("You must specify the same number of entries in 'files' and "
+                        + "'types' (respectively " + filesLength + " and " + typesLength + " entries )");
             }
-            if ( classifiersLength != filesLength )
-            {
-                throw new MojoExecutionException( "You must specify the same number of entries in 'files' and "
-                    + "'classifiers' (respectively " + filesLength + " and " + classifiersLength + " entries )" );
+            if (classifiersLength != filesLength) {
+                throw new MojoException("You must specify the same number of entries in 'files' and "
+                        + "'classifiers' (respectively " + filesLength + " and " + classifiersLength + " entries )");
             }
             int fi = 0;
             int ti = 0;
             int ci = 0;
-            for ( int i = 0; i <= filesLength; i++ )
-            {
-                int nfi = files.indexOf( ',', fi );
-                if ( nfi == -1 )
-                {
+            for (int i = 0; i <= filesLength; i++) {
+                int nfi = files.indexOf(',', fi);
+                if (nfi == -1) {
                     nfi = files.length();
                 }
-                int nti = types.indexOf( ',', ti );
-                if ( nti == -1 )
-                {
+                int nti = types.indexOf(',', ti);
+                if (nti == -1) {
                     nti = types.length();
                 }
-                int nci = classifiers.indexOf( ',', ci );
-                if ( nci == -1 )
-                {
+                int nci = classifiers.indexOf(',', ci);
+                if (nci == -1) {
                     nci = classifiers.length();
                 }
-                File file = new File( files.substring( fi, nfi ) );
-                if ( !file.isFile() )
-                {
+                Path file = Paths.get(files.substring(fi, nfi).replace("/", File.separator));
+                if (!Files.isRegularFile(file)) {
                     // try relative to the project basedir just in case
-                    file = new File( project.getBasedir(), files.substring( fi, nfi ) );
+                    file = Paths.get(files.substring(fi, nfi));
                 }
-                if ( file.isFile() )
-                {
-                    if ( StringUtils.isWhitespace( classifiers.substring( ci, nci ) ) )
-                    {
-                        projectHelper.attachArtifact( project, types.substring( ti, nti ).trim(), file );
-                    }
-                    else
-                    {
-                        projectHelper.attachArtifact( project, types.substring( ti, nti ).trim(),
-                                                      classifiers.substring( ci, nci ).trim(), file );
-                    }
-                }
-                else
-                {
-                    throw new MojoExecutionException( "Specified side artifact " + file + " does not exist" );
+                if (Files.isRegularFile(file)) {
+                    String extension = getExtension(file);
+                    String type = types.substring(ti, nti).trim();
+
+                    Artifact deployable = session.createArtifact(
+                            artifact.getGroupId(),
+                            artifact.getArtifactId(),
+                            artifact.getVersion().asString(),
+                            classifiers.substring(ci, nci).trim(),
+                            extension,
+                            type);
+                    artifactManager.setPath(deployable, file);
+                    deployables.add(deployable);
+                } else {
+                    throw new MojoException("Specified side artifact " + file + " does not exist");
                 }
                 fi = nfi + 1;
                 ti = nti + 1;
                 ci = nci + 1;
             }
-        }
-        else
-        {
-            if ( types != null )
-            {
-                throw new MojoExecutionException( "You must specify 'files' if you specify 'types'" );
+        } else {
+            if (types != null) {
+                throw new MojoException("You must specify 'files' if you specify 'types'");
             }
-            if ( classifiers != null )
-            {
-                throw new MojoExecutionException( "You must specify 'files' if you specify 'classifiers'" );
+            if (classifiers != null) {
+                throw new MojoException("You must specify 'files' if you specify 'classifiers'");
             }
         }
 
-        List<Artifact> attachedArtifacts = project.getAttachedArtifacts();
+        try {
+            ArtifactDeployerRequest deployRequest = ArtifactDeployerRequest.builder()
+                    .session(session)
+                    .repository(deploymentRepository)
+                    .artifacts(deployables)
+                    .retryFailedDeploymentCount(Math.max(1, Math.min(10, getRetryFailedDeploymentCount())))
+                    .build();
 
-        for ( Artifact attached : attachedArtifacts )
-        {
-            deployableArtifacts.add( attached );
-        }
-
-        try
-        {
-            artifactDeployer.deploy( getSession().getProjectBuildingRequest(), deploymentRepository,
-                                     deployableArtifacts );
-        }
-        catch ( ArtifactDeployerException e )
-        {
-            throw new MojoExecutionException( e.getMessage(), e );
+            getLog().info("Deploying artifacts " + deployables + " to repository " + deploymentRepository);
+            ArtifactDeployer artifactDeployer = session.getService(ArtifactDeployer.class);
+            artifactDeployer.deploy(deployRequest);
+        } catch (ArtifactDeployerException e) {
+            throw new MojoException(e.getMessage(), e);
+        } finally {
+            if (pomFile == null && deployedPom != null) {
+                try {
+                    Files.deleteIfExists(deployedPom);
+                } catch (IOException e) {
+                    // ignore
+                }
+            }
         }
     }
 
     /**
-     * Creates a Maven project in-memory from the user-supplied groupId, artifactId and version. When a classifier is
-     * supplied, the packaging must be POM because the project with only have attachments. This project serves as basis
-     * to attach the artifacts to deploy to.
-     * 
-     * @return The created Maven project, never <code>null</code>.
-     * @throws MojoExecutionException When the model of the project could not be built.
-     * @throws MojoFailureException When building the project failed.
+     * Gets the path of the specified artifact within the local repository. Note that the returned path need not exist
+     * (yet).
      */
-    private MavenProject createMavenProject()
-        throws MojoExecutionException, MojoFailureException
-    {
-        if ( groupId == null || artifactId == null || version == null || packaging == null )
-        {
-            throw new MojoExecutionException( "The artifact information is incomplete: 'groupId', 'artifactId', "
-                + "'version' and 'packaging' are required." );
-        }
-        ModelSource modelSource =
-            new StringModelSource( "<project>" + "<modelVersion>4.0.0</modelVersion>" + "<groupId>" + groupId
-                + "</groupId>" + "<artifactId>" + artifactId + "</artifactId>" + "<version>" + version + "</version>"
-                + "<packaging>" + ( classifier == null ? packaging : "pom" ) + "</packaging>" + "</project>" );
-        DefaultProjectBuildingRequest buildingRequest =
-            new DefaultProjectBuildingRequest( getSession().getProjectBuildingRequest() );
-        buildingRequest.setProcessPlugins( false );
-        try
-        {
-            return projectBuilder.build( modelSource, buildingRequest ).getProject();
-        }
-        catch ( ProjectBuildingException e )
-        {
-            if ( e.getCause() instanceof ModelBuildingException )
-            {
-                throw new MojoExecutionException( "The artifact information is not valid:" + Os.LINE_SEP
-                    + e.getCause().getMessage() );
-            }
-            throw new MojoFailureException( "Unable to create the project.", e );
-        }
-    }
-
-    /**
-     * Gets the path of the artifact constructed from the supplied groupId, artifactId, version, classifier and
-     * packaging within the local repository. Note that the returned path need not exist (yet).
-     * 
-     * @return The absolute path to the artifact when installed, never <code>null</code>.
-     */
-    private File getLocalRepoFile()
-    {
-        DefaultArtifactCoordinate coordinate = new DefaultArtifactCoordinate();
-        coordinate.setGroupId( groupId );
-        coordinate.setArtifactId( artifactId );
-        coordinate.setVersion( version );
-        coordinate.setClassifier( classifier );
-        coordinate.setExtension( packaging );
-        String path = repoManager.getPathForLocalArtifact( getSession().getProjectBuildingRequest(), coordinate );
-        return new File( repoManager.getLocalRepositoryBasedir( getSession().getProjectBuildingRequest() ), path );
+    private Path getLocalRepositoryFile(Artifact artifact) {
+        return session.getPathForLocalArtifact(artifact);
     }
 
     /**
      * Process the supplied pomFile to get groupId, artifactId, version, and packaging
-     * 
+     *
      * @param model The POM to extract missing artifact coordinates from, must not be <code>null</code>.
      */
-    private void processModel( Model model )
-    {
+    private void processModel(Model model) {
         Parent parent = model.getParent();
 
-        if ( this.groupId == null )
-        {
+        if (this.groupId == null) {
             this.groupId = model.getGroupId();
-            if ( this.groupId == null && parent != null )
-            {
+            if (this.groupId == null && parent != null) {
                 this.groupId = parent.getGroupId();
             }
         }
-        if ( this.artifactId == null )
-        {
+        if (this.artifactId == null) {
             this.artifactId = model.getArtifactId();
         }
-        if ( this.version == null )
-        {
+        if (this.version == null) {
             this.version = model.getVersion();
-            if ( this.version == null && parent != null )
-            {
+            if (this.version == null && parent != null) {
                 this.version = parent.getVersion();
             }
         }
-        if ( this.packaging == null )
-        {
+        if (this.packaging == null) {
             this.packaging = model.getPackaging();
         }
     }
 
     /**
      * Extract the model from the specified POM file.
-     * 
+     *
      * @param pomFile The path of the POM file to parse, must not be <code>null</code>.
      * @return The model from the POM file, never <code>null</code>.
-     * @throws MojoExecutionException If the file doesn't exist of cannot be read.
+     * @throws MojoException If the file doesn't exist of cannot be read.
      */
-    Model readModel( File pomFile )
-        throws MojoExecutionException
-    {
-        Reader reader = null;
-        try
-        {
-            reader = ReaderFactory.newXmlReader( pomFile );
-            final Model model = new MavenXpp3Reader().read( reader );
-            reader.close();
-            reader = null;
-            return model;
-        }
-        catch ( FileNotFoundException e )
-        {
-            throw new MojoExecutionException( "POM not found " + pomFile, e );
-        }
-        catch ( IOException e )
-        {
-            throw new MojoExecutionException( "Error reading POM " + pomFile, e );
-        }
-        catch ( XmlPullParserException e )
-        {
-            throw new MojoExecutionException( "Error parsing POM " + pomFile, e );
-        }
-        finally
-        {
-            IOUtil.close( reader );
+    Model readModel(Path pomFile) throws MojoException {
+        try (InputStream is = Files.newInputStream(pomFile)) {
+            ModelXmlFactory modelXmlFactory = session.getService(ModelXmlFactory.class);
+            return modelXmlFactory.read(is);
+        } catch (FileNotFoundException e) {
+            throw new MojoException("POM not found " + pomFile, e);
+        } catch (IOException e) {
+            throw new MojoException("Error reading POM " + pomFile, e);
+        } catch (XmlReaderException e) {
+            throw new MojoException("Error parsing POM " + pomFile, e);
         }
     }
 
     /**
      * Generates a minimal POM from the user-supplied artifact information.
-     * 
+     *
      * @return The path to the generated POM file, never <code>null</code>.
-     * @throws MojoExecutionException If the generation failed.
+     * @throws MojoException If the generation failed.
      */
-    private File generatePomFile()
-        throws MojoExecutionException
-    {
+    private Path generatePomFile() throws MojoException {
         Model model = generateModel();
-
-        Writer fw = null;
-        try
-        {
-            File tempFile = File.createTempFile( "mvndeploy", ".pom" );
-            tempFile.deleteOnExit();
-
-            fw = WriterFactory.newXmlWriter( tempFile );
-
-            new MavenXpp3Writer().write( fw, model );
-
-            fw.close();
-            fw = null;
-
-            return tempFile;
-        }
-        catch ( IOException e )
-        {
-            throw new MojoExecutionException( "Error writing temporary pom file: " + e.getMessage(), e );
-        }
-        finally
-        {
-            IOUtil.close( fw );
+        try {
+            Path pomFile = File.createTempFile("mvndeploy", ".pom").toPath();
+            try (Writer writer = Files.newBufferedWriter(pomFile)) {
+                ModelXmlFactory modelXmlFactory = session.getService(ModelXmlFactory.class);
+                modelXmlFactory.write(model, writer);
+            }
+            return pomFile;
+        } catch (IOException e) {
+            throw new MojoException("Error writing temporary POM file: " + e.getMessage(), e);
         }
     }
 
     /**
      * Generates a minimal model from the user-supplied artifact information.
-     * 
+     *
      * @return The generated model, never <code>null</code>.
      */
-    private Model generateModel()
-    {
-        Model model = new Model();
-
-        model.setModelVersion( "4.0.0" );
-
-        model.setGroupId( groupId );
-        model.setArtifactId( artifactId );
-        model.setVersion( version );
-        model.setPackaging( packaging );
-
-        model.setDescription( description );
-
-        return model;
+    private Model generateModel() {
+        return Model.newBuilder()
+                .modelVersion("4.0.0")
+                .groupId(groupId)
+                .artifactId(artifactId)
+                .version(version)
+                .packaging(packaging)
+                .description(description)
+                .build();
     }
 
-    void setGroupId( String groupId )
-    {
+    void setGroupId(String groupId) {
         this.groupId = groupId;
     }
 
-    void setArtifactId( String artifactId )
-    {
+    void setArtifactId(String artifactId) {
         this.artifactId = artifactId;
     }
 
-    void setVersion( String version )
-    {
+    void setVersion(String version) {
         this.version = version;
     }
 
-    void setPackaging( String packaging )
-    {
+    void setPackaging(String packaging) {
         this.packaging = packaging;
     }
 
-    void setPomFile( File pomFile )
-    {
+    void setPomFile(Path pomFile) {
         this.pomFile = pomFile;
     }
 
-    String getGroupId()
-    {
+    String getGroupId() {
         return groupId;
     }
 
-    String getArtifactId()
-    {
+    String getArtifactId() {
         return artifactId;
     }
 
-    String getVersion()
-    {
+    String getVersion() {
         return version;
     }
 
-    String getPackaging()
-    {
+    String getPackaging() {
         return packaging;
     }
 
-    File getFile()
-    {
+    Path getFile() {
         return file;
     }
 
-    String getClassifier()
-    {
+    String getClassifier() {
         return classifier;
     }
 
-    void setClassifier( String classifier )
-    {
+    void setClassifier(String classifier) {
         this.classifier = classifier;
     }
 
+    // these below should be shared (duplicated in m-install-p, m-deploy-p)
+
+    private static int countCommas(String str) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = str.indexOf(',', idx)) != -1) {
+            count++;
+            idx++;
+        }
+        return count;
+    }
+
+    /**
+     * Get file extension, honoring various {@code tar.xxx} combinations.
+     */
+    private String getExtension(final Path file) {
+        String filename = file.getFileName().toString();
+        int lastDot = filename.lastIndexOf('.');
+        if (lastDot > 0 && lastDot < filename.length() - 1) {
+            String ext = filename.substring(lastDot + 1);
+            return filename.regionMatches(lastDot + 1 - TAR.length(), TAR, 0, TAR.length()) ? TAR + ext : ext;
+        }
+        return "";
+    }
+
+    /**
+     * Returns {@code true} if passed in string is "valid Maven ID" (groupId or artifactId).
+     */
+    private boolean isValidId(String id) {
+        if (id == null) {
+            return false;
+        }
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            if (!(c >= 'a' && c <= 'z'
+                    || c >= 'A' && c <= 'Z'
+                    || c >= '0' && c <= '9'
+                    || c == '-'
+                    || c == '_'
+                    || c == '.')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Returns {@code true} if passed in string is "valid Maven (simple. non range, expression, etc) version".
+     */
+    private boolean isValidVersion(String version) {
+        if (version == null) {
+            return false;
+        }
+        for (int i = version.length() - 1; i >= 0; i--) {
+            if (ILLEGAL_VERSION_CHARS.indexOf(version.charAt(i)) >= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
